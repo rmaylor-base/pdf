@@ -40,25 +40,69 @@ func main() {
 
 	// Banner - phone, email, domain
 	pdf.SetFont("arial", "", 8)
-	pdf.SetTextColor(255,255,255)
+	pdf.SetTextColor(255, 255, 255)
 	_, lineHt = pdf.GetFontSize()
-	pdf.MoveTo(w - xIndent - 2.0*124.0, (bannerHt - (lineHt*1.5*3.0))/2.0)
-	pdf.MultiCell(124.0, lineHt * 1.5, "0151 336 4700\nross1012@gmail.com\ngithub.com/ematogra", gofpdf.BorderNone, gofpdf.AlignRight, false)
+	pdf.MoveTo(w-xIndent-2.0*124.0, (bannerHt-(lineHt*1.5*3.0))/2.0)
+	pdf.MultiCell(124.0, lineHt*1.5, "0151 336 4700\nross1012@gmail.com\ngithub.com/ematogra", gofpdf.BorderNone, gofpdf.AlignRight, false)
 
 	// Banner - address
 	pdf.SetFont("arial", "", 8)
-	pdf.SetTextColor(255,255,255)
+	pdf.SetTextColor(255, 255, 255)
 	_, lineHt = pdf.GetFontSize()
-	pdf.MoveTo(w - xIndent - 124.0, (bannerHt - (lineHt*1.5*3.0))/2.0)
-	pdf.MultiCell(124.0, lineHt * 1.5, "Flat 7, 14-16 Underhill Road\nLondon\nSE22 0AH", gofpdf.BorderNone, gofpdf.AlignRight, false)
+	pdf.MoveTo(w-xIndent-124.0, (bannerHt-(lineHt*1.5*3.0))/2.0)
+	pdf.MultiCell(124.0, lineHt*1.5, "Flat 7, 14-16 Underhill Road\nLondon\nSE22 0AH", gofpdf.BorderNone, gofpdf.AlignRight, false)
+
+	// Summary - Billed To, Invoice #, Date of Issue
+	_, sy := summaryBlock(pdf, xIndent, bannerHt+lineHt*2.0, "Billed To", "Client Name", "123 Client Street", "City County UK", "Postcode")
+	summaryBlock(pdf, xIndent*2.0+lineHt*18.0, bannerHt+lineHt*2.0, "Invoice No", "000000001234")
+	summaryBlock(pdf, xIndent*2.0+lineHt*18.0, bannerHt+lineHt*8.5, "Date of Issue", "11/05/2023")
+
+	// Summary - Invoice total
+	x, y := w-xIndent-124.0, bannerHt+lineHt*2.35
+	pdf.MoveTo(x, y)
+	pdf.SetFont("arial", "", 14)
+	_, lineHt = pdf.GetFontSize()
+	pdf.SetTextColor(180, 180, 180)
+	pdf.CellFormat(124.0, lineHt, "Invoice Total", gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignRight, false, 0, "")
+	x, y = x+2.0, y+lineHt*1.5
+	pdf.MoveTo(x, y)
+	pdf.SetFont("arial", "", 40)
+	_, lineHt = pdf.GetFontSize()
+	alpha := 58
+	pdf.SetTextColor(72+alpha, 42+alpha, 55+alpha)
+	totalGBP := "£1234.56"
+	pdf.CellFormat(124.0, lineHt, totalGBP, gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignRight, false, 0, "")
+	x, y = x-2.0, y+lineHt*1.25
+
+	if sy > y {
+		y = sy
+	}
+	x, y = xIndent-20.0, y+30.0
+	pdf.Rect(x, y, w-(xIndent*2.0)+40.0, 3.0, "F")
 
 	// Grid
 	// drawGrid(pdf)
 
-	err := pdf.OutputFileAndClose("p2.pdf")
+	err := pdf.OutputFileAndClose("p3.pdf")
 	if err != nil {
 		panic(err)
 	}
+}
+
+func summaryBlock(pdf *gofpdf.Fpdf, x, y float64, title string, data ...string) (float64, float64) {
+	pdf.SetFont("arial", "", 14)
+	pdf.SetTextColor(180, 180, 180)
+	_, lineHt := pdf.GetFontSize()
+	y = y + lineHt
+	pdf.Text(x, y, title)
+	// pdf.SetTextColor(50, 50, 50)
+	y = y + lineHt*0.25
+	pdf.SetTextColor(50, 50, 50)
+	for _, str := range data {
+		y = y + lineHt*1.25
+		pdf.Text(x, y, str)
+	}
+	return x, y
 }
 
 // Function to create grid to help with creating pdf
