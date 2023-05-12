@@ -1,253 +1,189 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"image/color"
+	"time"
 
 	"github.com/jung-kurt/gofpdf"
 )
 
-const (
-	bannerHt = 95.0
-	xIndent  = 40.0
-	taxRate  = 0.09
-)
+type PDFOption func(*gofpdf.Fpdf)
 
-type LineItem struct {
-	UnitName       string
-	PricePerUnit   int
-	UnitsPurchased int
+func FillColour(c color.RGBA) PDFOption {
+	return func(pdf *gofpdf.Fpdf) {
+		r, g, b := rgb(c)
+		pdf.SetFillColor(r, g, b)
+	}
+}
+
+func rgb(c color.RGBA) (int, int, int) {
+	alpha := float64(c.A) / 255.0
+	alphaWhite := int(255 * (1.0 - alpha))
+	r := int(float64(c.R)*alpha) + alphaWhite
+	g := int(float64(c.G)*alpha) + alphaWhite
+	b := int(float64(c.B)*alpha) + alphaWhite
+	return r, g, b
+}
+
+type PDF struct {
+	fpdf *gofpdf.Fpdf
+	x, y float64
+}
+
+func (p *PDF) Move(xDelta, yDelta float64) {
+	p.x, p.y = p.x+xDelta, p.y+yDelta
+	p.fpdf.MoveTo(p.x, p.y)
+}
+
+func (p *PDF) MoveAbs(x, y float64) {
+	p.x, p.y = x, y
+	p.fpdf.MoveTo(p.x, p.y)
+}
+
+func (p *PDF) Text(text string) {
+	p.fpdf.Text(p.x, p.y, text)
+}
+
+func (p *PDF) Polygon(pts []gofpdf.PointType, opts ...PDFOption) {
+	for _, opt := range opts {
+		opt(p.fpdf)
+	}
+	p.fpdf.Polygon(pts, "F")
 }
 
 func main() {
-	lineItems := []LineItem{
-		{
-			UnitName:       "Treated Sawn Timber - 19 x 38 x 1800mm",
-			PricePerUnit:   375, // in pence
-			UnitsPurchased: 220,
-		}, {
-			UnitName:       "Plasterboard Sheet",
-			PricePerUnit:   822, // in pence
-			UnitsPurchased: 50,
-		}, {
-			UnitName:       "Paint",
-			PricePerUnit:   1455, // in pence
-			UnitsPurchased: 3,
-		}, {
-			UnitName:       "Is the word wrapping working? Not sure it is! let's see... hmmm....",
-			PricePerUnit:   1455, // in pence
-			UnitsPurchased: 3,
-		}, {
-			UnitName:       "Nails",
-			PricePerUnit:   2345, // in pence
-			UnitsPurchased: 4,
-		},
+	name := flag.String("name", "", "the name of the person who completed the course")
+	flag.Parse()
+	fpdf := gofpdf.New(gofpdf.OrientationLandscape, gofpdf.UnitPoint, gofpdf.PageSizeA4, "")
+	w, h := fpdf.GetPageSize()
+	fpdf.AddPage()
+	pdf := PDF{
+		fpdf: fpdf,
 	}
 
-	subtotal := 0
-	for _, li := range lineItems {
-		subtotal += li.PricePerUnit * li.UnitsPurchased
-	}
-	tax := int(float64(subtotal) * taxRate)
-	total := subtotal + tax
-	totalGBP := toGBP(total)
+	primary := color.RGBA{121, 50, 168, 255}
+	secondary := color.RGBA{121, 50, 168, 220}
 
-	pdf := gofpdf.New(gofpdf.OrientationPortrait, gofpdf.UnitPoint, gofpdf.PageSizeA4, "")
-	w, h := pdf.GetPageSize()
-	fmt.Printf("width=%v, height=%v\n", w, h)
-	pdf.AddPage()
-
-	// Create top and bottom banners
-	pdf.SetFillColor(103, 60, 79)
+	// Top banner
 	pdf.Polygon([]gofpdf.PointType{
 		{0, 0},
+		{0, h / 9.0},
 		{w, 0},
-		{w, bannerHt},
-		{0, bannerHt * 0.8},
-	}, "F")
+	}, FillColour(secondary))
 	pdf.Polygon([]gofpdf.PointType{
-		{0, h},
-		{0, h - (bannerHt * 0.2)},
-		{w, h - (bannerHt * 0.1)},
+		{w, 0},
+		{0, 0},
+		{w, h / 9.0},
+	}, FillColour(primary))
+
+	// Bottom banner
+	pdf.Polygon([]gofpdf.PointType{
+		{w, h - h/9.0},
 		{w, h},
-	}, "F")
+		{0, h},
+	}, FillColour(secondary))
+	pdf.Polygon([]gofpdf.PointType{
+		{w, h},
+		{0, h - h/9.0},
+		{0, h},
+	}, FillColour(primary))
 
-	// Banner - "Invoice"
-	pdf.SetFont("arial", "", 40)
-	pdf.SetTextColor(255, 255, 255)
-	_, lineHt := pdf.GetFontSize()
-	pdf.Text(xIndent, bannerHt-lineHt, "Invoice")
+	// "Certificate of Completion"
+	fpdf.SetFont("arial", "B", 50)
+	fpdf.SetTextColor(50, 50, 50)
+	pdf.MoveAbs(0, 100)
+	_, lineHt := fpdf.GetFontSize()
+	fpdf.WriteAligned(0, lineHt, "Certificate of Completion", gofpdf.AlignCenter)
+	pdf.Move(0, lineHt*2.0)
 
-	// Banner - Logo
-	pdf.ImageOptions("images/gophercises.png", 238.0, (bannerHt-(bannerHt/1.5))/2.0, 0, bannerHt/1.5, false, gofpdf.ImageOptions{
+	fpdf.SetFont("arial", "", 28)
+	_, lineHt = fpdf.GetFontSize()
+	fpdf.WriteAligned(0, lineHt, "This certificate is awarded to", gofpdf.AlignCenter)
+	pdf.Move(0, lineHt*2.0)
+
+	fpdf.SetFont("times", "I", 42)
+	_, lineHt = fpdf.GetFontSize()
+	fpdf.WriteAligned(0, lineHt, *name, gofpdf.AlignCenter)
+	pdf.Move(0, lineHt*1.75)
+
+	fpdf.SetFont("arial", "", 22)
+	_, lineHt = fpdf.GetFontSize()
+	fpdf.WriteAligned(0, lineHt*1.5, "For successfully completing all twenty programming exercises in the Gophercises programming course for budding Gophers (Go developers)", gofpdf.AlignCenter)
+	pdf.Move(0, lineHt*3.75)
+
+	// Gopher
+	fpdf.ImageOptions("images/gophercises.png", w/2.0-50.0, pdf.y, (50.0 * 2), 0, false, gofpdf.ImageOptions{
 		ReadDpi: true,
 	}, 0, "")
+	// gopher, err := gofpdf.SVGBasicFileParse("images/gophercises.svg")
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// fpdf.SVGBasicWrite(&gopher, 0.8)
 
-	// Banner - phone, email, domain
-	pdf.SetFont("arial", "", 8)
-	pdf.SetTextColor(255, 255, 255)
-	_, lineHt = pdf.GetFontSize()
-	pdf.MoveTo(w-xIndent-2.0*124.0, (bannerHt-(lineHt*1.5*3.0))/2.0)
-	pdf.MultiCell(124.0, lineHt*1.5, "0151 336 4700\nross1012@gmail.com\ngithub.com/ematogra", gofpdf.BorderNone, gofpdf.AlignRight, false)
+	pdf.Move(0, 65.0)
+	fpdf.SetFillColor(100, 100, 100)
+	lineLgth := 250.0
+	fpdf.Rect(w/4-lineLgth/2, pdf.y, lineLgth, 1.0, "F")
+	fpdf.Rect(w/4*3-lineLgth/2, pdf.y, lineLgth, 1.0, "F")
 
-	// Banner - address
-	pdf.SetFont("arial", "", 8)
-	pdf.SetTextColor(255, 255, 255)
-	_, lineHt = pdf.GetFontSize()
-	pdf.MoveTo(w-xIndent-124.0, (bannerHt-(lineHt*1.5*3.0))/2.0)
-	pdf.MultiCell(124.0, lineHt*1.5, "Flat 7, 14-16 Underhill Road\nLondon\nSE22 0AH", gofpdf.BorderNone, gofpdf.AlignRight, false)
+	fpdf.SetFont("arial", "", 12)
+	pdf.MoveAbs(0, pdf.y)
+	fpdf.SetTextColor(100, 100, 100)
+	cellWidth := 200.0
+	cellHeight := lineHt * 1.5
+	pdf.MoveAbs(w/4-(cellWidth/2), pdf.y)
+	fpdf.CellFormat(cellWidth, cellHeight, "Date", gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignCenter, false, 0, "")
+	pdf.MoveAbs(w/4*3-(cellWidth/2), pdf.y)
+	fpdf.CellFormat(cellWidth, cellHeight, "Instructor - Jon Calhoun", gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignCenter, false, 0, "")
 
-	// Summary - Billed To, Invoice #, Date of Issue
-	_, sy := summaryBlock(pdf, xIndent, bannerHt+lineHt*2.0, "Billed To", "Client Name", "123 Client Street", "City County UK", "Postcode")
-	summaryBlock(pdf, xIndent*2.0+lineHt*18.0, bannerHt+lineHt*2.0, "Invoice No", "000000001234")
-	summaryBlock(pdf, xIndent*2.0+lineHt*18.0, bannerHt+lineHt*8.5, "Date of Issue", "11/05/2023")
+	fpdf.SetFont("times", "I", 22)
+	pdf.MoveAbs(w/4-(cellWidth/2), pdf.y-cellHeight)
+	yr, mo, day := time.Now().Date()
+	dateStr := fmt.Sprintf("%d/%d/%d", day, mo, yr)
+	fpdf.CellFormat(cellWidth, cellHeight, dateStr, gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignCenter, false, 0, "")
+	pdf.MoveAbs(w/4*3-(cellWidth/2), pdf.y)
+	// fpdf.CellFormat(cellWidth, cellHeight, "Jonathan Calhoun", gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignCenter, false, 0, "")
 
-	// Summary - Invoice total
-	x, y := w-xIndent-124.0, bannerHt+lineHt*2.35
-	pdf.MoveTo(x, y)
-	pdf.SetFont("arial", "", 14)
-	_, lineHt = pdf.GetFontSize()
-	pdf.SetTextColor(180, 180, 180)
-	pdf.CellFormat(124.0, lineHt, "Invoice Total", gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignRight, false, 0, "")
-	x, y = x+2.0, y+lineHt*1.5
-	pdf.MoveTo(x, y)
-	pdf.SetFont("arial", "", 40)
-	_, lineHt = pdf.GetFontSize()
-	alpha := 58
-	pdf.SetTextColor(72+alpha, 42+alpha, 55+alpha)
-	pdf.CellFormat(124.0, lineHt, totalGBP, gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignRight, false, 0, "")
-	x, y = x-2.0, y+lineHt*1.25
-
-	// Divider
-	if sy > y {
-		y = sy
+	sig, err := gofpdf.SVGBasicFileParse("images/sig.svg")
+	if err != nil {
+		panic(err)
 	}
-	x, y = xIndent-20.0, y+30.0
-	pdf.Rect(x, y, w-(xIndent*2.0)+40.0, 3.0, "F")
-
-	// Line items - titles
-	pdf.SetFont("arial", "", 14)
-	_, lineHt = pdf.GetFontSize()
-	pdf.SetTextColor(180, 180, 180)
-	x, y = xIndent-2.0, y+lineHt
-	pdf.MoveTo(x, y)
-	pdf.CellFormat(w/2.65+1.8, lineHt, "Description", gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignLeft, false, 0, "")
-	x = x + w/2.65 + 1.5
-	pdf.MoveTo(x, y)
-	pdf.CellFormat(100.0, lineHt, "Price per unit", gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignRight, false, 0, "")
-	x = x + 100.0
-	pdf.MoveTo(x, y)
-	pdf.CellFormat(80.0, lineHt, "Quantity", gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignRight, false, 0, "")
-	pdf.CellFormat(119.5, lineHt, "Amount", gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignRight, false, 0, "")
-
-	// Line items - individual purchases
-	y = y + lineHt
-	for _, li := range lineItems {
-		x, y = lineItem(pdf, x, y, li)
-	}
-
-	// Subtotal
-	x, y = 364.13, y+lineHt*2.25
-	x, y = calculateTotal(pdf, x, y, "Subtotal", subtotal)
-	x, y = calculateTotal(pdf, x, y, "Tax", tax)
-	pdf.SetDrawColor(180, 180, 180)
-	pdf.Line(x, y, w-xIndent+10.0, y)
-	y = y + lineHt/2
-	x, y = calculateTotal(pdf, x, y, "Total", total)
+	pdf.Move(0, -(sig.Ht*0.25 - lineHt))
+	fpdf.SVGBasicWrite(&sig, 0.35)
 
 	// Grid
 	// drawGrid(pdf)
 
-	err := pdf.OutputFileAndClose("p4.pdf")
+	err = fpdf.OutputFileAndClose("cert.pdf")
 	if err != nil {
 		panic(err)
 	}
 }
 
-func calculateTotal(pdf *gofpdf.Fpdf, x, y float64, label string, amount int) (float64, float64) {
-	origX := x
-	pdf.SetFont("arial", "", 14)
-	_, lineHt := pdf.GetFontSize()
-	pdf.SetTextColor(180, 180, 180)
-	pdf.MoveTo(x, y)
-	pdf.CellFormat(80.0, lineHt, label, gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignRight, false, 0, "")
-	pdf.SetTextColor(50, 50, 50)
-	pdf.CellFormat(119.5, lineHt, toGBP(amount), gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignRight, false, 0, "")
-	y = y + lineHt*1.5
-	return origX, y
-}
+// // Function to create grid to help with creating pdf
+// func drawGrid(pdf *gofpdf.Fpdf) {
+// 	w, h := pdf.GetPageSize()
+// 	pdf.SetFont("courier", "", 12)
+// 	pdf.SetTextColor(80, 80, 80)
+// 	pdf.SetDrawColor(200, 200, 200)
 
-func toGBP(pence int) string {
-	penceStr := fmt.Sprintf("%d", pence%100)
-	if len(penceStr) < 2 {
-		penceStr = "0" + penceStr
-	}
-	return fmt.Sprintf("\u00a3%d.%s", pence/100, penceStr)
-}
+// 	for x := 0.0; x < w; x = x + (w / 20.0) {
+// 		pdf.SetTextColor(200, 200, 200)
+// 		pdf.Line(x, 0, x, h)
+// 		_, lineHt := pdf.GetFontSize()
+// 		pdf.Text(x, lineHt, fmt.Sprintf("%d", int(x)))
+// 	}
 
-func lineItem(pdf *gofpdf.Fpdf, x, y float64, lineItem LineItem) (float64, float64) {
-	origX := x
-	w, _ := pdf.GetPageSize()
-	pdf.SetFont("arial", "", 14)
-	pdf.SetTextColor(50, 50, 50)
-	_, lineHt := pdf.GetFontSize()
-	x, y = xIndent-2.0, y+lineHt*.75
-	pdf.MoveTo(x, y)
-	pdf.MultiCell(w/2.65+1.8, lineHt, lineItem.UnitName, gofpdf.BorderNone, gofpdf.AlignLeft, false)
-	tmp := pdf.SplitLines([]byte(lineItem.UnitName), w/2.65+1.5)
-	maxY := y + float64(len(tmp)-1)*lineHt
-	x = x + w/2.65 + 1.5
-	pdf.MoveTo(x, y)
-	pdf.CellFormat(100.0, lineHt, toGBP(lineItem.PricePerUnit), gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignRight, false, 0, "")
-	x = x + 100.0
-	pdf.MoveTo(x, y)
-	pdf.CellFormat(80.0, lineHt, fmt.Sprint(lineItem.UnitsPurchased), gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignRight, false, 0, "")
-	// x = w - xIndent - 2.0 - 119.5
-	pdf.CellFormat(119.5, lineHt, toGBP(lineItem.PricePerUnit*lineItem.UnitsPurchased), gofpdf.BorderNone, gofpdf.LineBreakNone, gofpdf.AlignRight, false, 0, "")
-	if maxY > y {
-		y = maxY
-	}
-	y = y + lineHt*1.75
-	pdf.SetDrawColor(180, 180, 180)
-	pdf.Line(xIndent-10.0, y, w-xIndent+10.0, y)
-	return origX, y
-}
-
-func summaryBlock(pdf *gofpdf.Fpdf, x, y float64, title string, data ...string) (float64, float64) {
-	pdf.SetFont("arial", "", 14)
-	pdf.SetTextColor(180, 180, 180)
-	_, lineHt := pdf.GetFontSize()
-	y = y + lineHt
-	pdf.Text(x, y, title)
-	y = y + lineHt*0.25
-	pdf.SetTextColor(50, 50, 50)
-	for _, str := range data {
-		y = y + lineHt*1.25
-		pdf.Text(x, y, str)
-	}
-	return x, y
-}
-
-// Function to create grid to help with creating pdf
-func drawGrid(pdf *gofpdf.Fpdf) {
-	w, h := pdf.GetPageSize()
-	pdf.SetFont("courier", "", 12)
-	pdf.SetTextColor(80, 80, 80)
-	pdf.SetDrawColor(200, 200, 200)
-
-	for x := 0.0; x < w; x = x + (w / 20.0) {
-		pdf.SetTextColor(200, 200, 200)
-		pdf.Line(x, 0, x, h)
-		_, lineHt := pdf.GetFontSize()
-		pdf.Text(x, lineHt, fmt.Sprintf("%d", int(x)))
-	}
-
-	for y := 0.0; y < h; y = y + (w / 20.0) {
-		if y < bannerHt*0.8 {
-			pdf.SetTextColor(200, 200, 200)
-		} else {
-			pdf.SetTextColor(80, 80, 80)
-		}
-		pdf.Line(0, y, w, y)
-		pdf.Text(0, y, fmt.Sprintf("%d", int(y)))
-	}
-}
+// 	for y := 0.0; y < h; y = y + (w / 20.0) {
+// 		if y < bannerHt*0.8 {
+// 			pdf.SetTextColor(200, 200, 200)
+// 		} else {
+// 			pdf.SetTextColor(80, 80, 80)
+// 		}
+// 		pdf.Line(0, y, w, y)
+// 		pdf.Text(0, y, fmt.Sprintf("%d", int(y)))
+// 	}
+// }
